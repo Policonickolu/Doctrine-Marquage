@@ -1,0 +1,479 @@
+<!-- Par Heidy Ben Yahia @Lion
+	 pour le cas pratique Doctrine.fr 
+
+	 Recrutez-moi ! :D
+
+-->
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Doctrine.fr — Annotations</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style type="text/css">
+
+		.Loi {
+			background-color: IndianRed;
+		}
+		.Partie {
+			background-color: LightSkyBlue;
+		}
+		.Avocat {
+			background-color: LightGreen;
+		}
+
+		body {
+			font-family: "Lato", sans-serif;
+			font-size: 16px;
+			color: rgba(0, 0, 0, 0.9);
+			line-height: 24px;
+		}
+
+		span {
+			float: left;
+		}
+
+		.menuButton {
+			min-width: 100px;
+			height: 50px;
+			margin: 0px;
+			padding: 0px;
+		}
+
+		.noteEnd {
+			color: darkred;
+			font-weight: bold;
+			cursor: pointer;
+		}
+
+		.inputNotes {
+			width: 25%;
+		}
+
+		.noselection {
+			-webkit-touch-callout: none;
+			-webkit-user-select: none;
+			-khtml-user-select: none;
+			-moz-user-select: none;
+			-ms-user-select: none;
+			user-select: none;
+			outline: 0;
+		}
+
+	</style>
+</head>
+<body>
+	<div id="app">
+		<div>
+			<button type="button" class="menuButton" v-bind:class="roleButton" v-on:click="switchRoleButton(roleButton)">{{ roleButton }}</button>
+			<button type="button" class="menuButton" v-on:click="indentNotes()">Format JSON</button>
+			<button type="button" class="menuButton" v-on:click="prevText()">Texte Précédent</button>
+			<button type="button" class="menuButton" v-on:click="nextText()">Texte Suivant</button>
+		</div>
+		<br>
+		<pre v-if="indent">{{notes}}</pre>
+		<p v-else>{{notes}}</p>
+		<br>
+		<div>
+			<input class="inputNotes" type="text" v-on:keydown.13="importNotes()" v-model="inputNotes" placeholder="Importer des annotations au format JSON">
+			<input type="submit" value="Importer" v-on:click="importNotes()">
+		</div>
+		<br>
+		<div class="noselection" v-on:mouseleave="endSelect()">
+			<template v-for="word in curText">
+				<span 	v-bind:class="word.role"
+						v-on:mousedown="startSelect(word.id)"
+						v-on:mouseup="endSelect()"
+						v-on:mouseenter="select(word.id, $event)">
+					{{ word.str }}
+				</span>
+				<template v-if="word.noteEnd">
+					<span class="noteEnd" v-bind:class="word.role" v-on:click="switchRoleNote(word.id)" title="Changer le type de l'annotation">
+						 ({{word.role}})
+					</span>
+					<span class="noteEnd" v-bind:class="word.role" v-on:click="deleteNote(word.id)" title="Supprimer l'annotation">
+						 (X)
+					</span>
+				</template>
+			</template>
+		</div>
+	</div>
+	<script src="vue.js"></script>
+	<script>
+
+		var app = new Vue({
+			el: '#app',
+			data: {
+				texts: [],				// Liste des textes
+				curText: [],			// Les mots du texte actuellement affiché, pour les afficher en temps réel
+				idText:0,				// L'indice du texte actuellement affiché, pour connaître le texte suivant ou précédent
+				roleButton: "Avocat", 	// Le type actuel du bouton des types
+				notes: "",				// Les annotations affichées en JSON
+				indent: false,			// Si le texte des annotations affichées en JSON doit être indenté
+				inputNotes: "",			// Le champs Input où insérer le JSON à importer
+				selectOrigin: "",		// L'id du mot d'origine d'une sélection de mots
+			},
+			mounted: function(){
+
+				var self = this;
+
+				var file = new XMLHttpRequest();
+				file.open("GET", "file:texts.xml", true);
+				file.onreadystatechange = function ()
+				{
+					if(file.readyState === 4)
+					{
+						if(file.status === 200 || file.status == 0)
+						{
+							var xml = file.responseXML.getElementsByTagName("TEXTE");
+
+							for (var i = 0; i < xml.length; i++) {
+
+								var arr = xml[i].innerHTML.split(/([\s,.…’]+)/);
+								self.texts[i] = {
+									id: xml[i].id,
+									words: []
+								}
+
+								for (var j = 0; j < arr.length; j++) {
+									self.texts[i].words.push({
+										id: j,
+										role: "Aucun",
+										prevRole: "Aucun",
+										noteEnd: false,
+										str: arr[j].replace(/\s/, " ") //espace non-sécable
+									});
+								}
+							}
+							self.curText = self.texts[0].words;
+						}
+					}
+				}
+				file.send(null);
+			},
+			methods: {
+				// Change le role du bouton et des prochaines sélections
+				switchRoleButton: function(btn){
+					switch(btn){
+						case "Avocat":
+							this.roleButton = "Loi";
+							break;
+						case "Loi":
+							this.roleButton = "Partie";
+							break;
+						case "Partie":
+							this.roleButton = "Aucun";
+							break;
+						case "Aucun":
+							this.roleButton = "Avocat";
+							break;
+						default:
+							break;
+					}
+				},
+				// Change le role/type d'une annotation
+				switchRoleNote: function(id){
+					var words = this.curText;
+					var role = words[id].role;
+					var newRole = "";
+
+					switch(role){
+						case "Avocat":
+							newRole = "Loi";
+							break;
+						case "Loi":
+							newRole = "Partie";
+							break;
+						case "Partie":
+							newRole = "Avocat";
+							break;
+						default:
+							break;
+					}
+
+					while(words[id].role == role || (words[id].role == "Aucun" && words[id-1].role == role && !words[id].str.match(/([A-Za-zÀ-ÿ0-9]+)/))){		words[id].role = newRole;	
+						words[id].prevRole = newRole;
+						id--;
+					}
+					this.exportNotes();
+				},
+				// Supprime une annotation
+				deleteNote: function(id){
+					var words = this.curText;
+					var role = words[id].role;
+					while(words[id].role == role || (words[id].role == "Aucun" && words[id-1].role == role && !words[id].str.match(/([A-Za-zÀ-ÿ0-9]+)/))){
+						words[id].role = "Aucun";	
+						words[id].prevRole = "Aucun";
+						words[id].noteEnd = false;	  			
+						id--;
+					}
+					this.exportNotes();
+				},
+				// Débute une sélection, marque le mot d'origine de la sélection
+				startSelect: function(id){
+					var word = this.curText[id];
+					if(word.str.match(/([A-Za-zÀ-ÿ0-9]+)/)){
+						this.selectOrigin = id;
+						word.role = this.roleButton;
+						word.prevRole = this.roleButton;
+					}
+				},
+				// Change temporairement le role/type des mots sélectionnés (entre le mot d'origine et le mot actuel déclanchant l'event)
+				select: function(id, event){
+					if(event.buttons == 1){
+						var words = this.curText;
+						for(var word of words){
+							word.role = word.prevRole;
+						}
+						if(this.selectOrigin == ""){
+							this.selectOrigin = id;
+						}
+						if(this.selectOrigin < id){
+							for(var i = this.selectOrigin; i <= id; i++){
+								if(i < id || words[i].str.match(/([A-Za-zÀ-ÿ0-9]+)/)){
+									words[i].prevRole = words[i].role;
+									words[i].role = this.roleButton;
+								}
+							}
+							if(words[this.selectOrigin-1].role == "Aucun"
+								&& !words[this.selectOrigin-1].str.match(/([A-Za-zÀ-ÿ0-9]+)/)
+								&& words[this.selectOrigin-2].role == words[this.selectOrigin].role
+								&& words[this.selectOrigin-2].str.match(/([A-Za-zÀ-ÿ0-9]+)/)){
+								words[this.selectOrigin-1].role = words[this.selectOrigin].role;
+							}
+							if(words[id+1].role == "Aucun"
+								&& !words[id+1].str.match(/([A-Za-zÀ-ÿ0-9]+)/)
+								&& words[id+2].role == words[id].role
+								&& words[id+2].str.match(/([A-Za-zÀ-ÿ0-9]+)/)){
+								words[id+1].role = words[id].role;
+							}
+						}else{
+							for(var i = id; i <= this.selectOrigin; i++){
+								if(i > id || words[i].str.match(/([A-Za-zÀ-ÿ0-9]+)/)){
+									words[i].prevRole = words[i].role;
+									words[i].role = this.roleButton;
+								}
+							}
+						}
+
+					}
+				},
+				// Fin de sélection, applique la sélection de façon permanente
+				endSelect: function(){
+					var words = this.curText;
+					for(var word of words){
+						word.prevRole = word.role;
+						if(words[word.id+1] != undefined && word.str.match(/([A-Za-zÀ-ÿ0-9]+)/) && words[word.id+2].role != word.role && word.role != "Aucun"){
+							word.noteEnd = true;
+						}else{
+							word.noteEnd = false;
+						}
+					}
+					this.selectOrigin = "";
+					this.exportNotes();
+				},
+				// Affiche le texte suivant
+				prevText: function(){
+					if(this.texts[this.idText-1] != undefined){
+						this.idText--;
+						this.curText = this.texts[this.idText].words;
+						this.endSelect();
+					}else{
+						alert("C'est le premier texte !");
+					}
+				},
+				// Affiche le texte précédent
+				nextText: function(){
+					if(this.texts[this.idText+1] != undefined){
+						this.idText++;
+						this.curText = this.texts[this.idText].words;
+						this.endSelect();
+					}else{
+						alert("C'est le dernier texte !");
+					}
+				},
+				// Change la façon d'afficher les annotations JSON
+				indentNotes: function(){
+					this.indent = !this.indent;
+				},
+				// Affiche les annotations sous forme JSON
+				exportNotes: function(){
+					var t = {
+						textes: []
+					}
+
+					for(var i = 0; i < this.texts.length; i++){
+
+						var words = this.texts[i].words;
+
+						var json = {
+							id: this.texts[i].id,
+							notes: []
+						};
+
+						var tableocc = [];
+
+						var mot = ""
+						var role = "Aucun";
+						var occurence = 0;
+
+						var longueur = 0;
+
+						if(words.length > 0){
+							if(words[0].str.match(/([A-Za-zÀ-ÿ0-9]+)/)){	
+								mot = words[0].mot;
+								tableocc[mot] = 1;
+								occurence = 1;
+								longueur = 1;
+							}
+							role = words[0].role;	  		
+						}
+
+						for (var j = 1; j < words.length; j++) {
+
+							var subText = words[j];
+
+							if(subText.str.match(/([A-Za-zÀ-ÿ0-9]+)/)){
+
+								if(tableocc[subText.str] != undefined){
+									tableocc[subText.str]++;
+								}else{
+									tableocc[subText.str] = 1;
+								}
+
+								if(role != subText.role){ 
+									if(role != "Aucun"){
+										json.notes.push({
+											mot: mot,
+											nocc: occurence,
+											longueur: longueur,
+											role: role
+										});
+									}
+
+									mot = subText.str;
+									occurence = tableocc[mot];
+									longueur = 1;
+
+								}else{
+									longueur++;
+								}
+								role = subText.role;
+
+							}
+
+						}
+						if(json.notes.length > 0)
+							t.textes.push(json);
+					}
+					this.notes = (t.textes.length > 0 ? JSON.stringify(t, null, 4) : "");
+				},
+				// Récupère les annations sous forme JSON et les place dans le texte
+				importNotes: function(){
+					
+					if(this.inputNotes.length > 0){
+
+						var n = "";
+
+						try {
+
+							n = JSON.parse(this.inputNotes);
+
+						}catch(e){
+
+							alert("Format JSON !\nExemple : { \"textes\": [ { \"id\": \"JURITEXT000032532582\", \"notes\": [ { \"mot\": \"que\", \"nocc\": 10, \"longueur\": 143, \"role\": \"Avocat\" } ] } ] }");
+							this.inputNotes = "";
+							return;
+
+						}
+
+						if(n.textes != undefined){
+
+							for(t of n.textes){
+
+								for(text of this.texts){
+
+									if(t.id == text.id){
+
+										for(note of t.notes){
+											
+											var cpt = 0;
+											var lgth = note.longueur;
+
+											for (var i = 0; i < text.words.length; i++) {
+
+												if(text.words[i].str == note.mot){
+
+													cpt++;
+
+													if(cpt == note.nocc){
+
+														while(lgth > 0){
+
+															text.words[i].role = note.role;
+															text.words[i].prevRole = note.role;
+
+															if(text.words[i].str.match(/([A-Za-zÀ-ÿ0-9]+)/)){
+																lgth--;
+															}
+															i++;
+														}
+														break;
+													}
+												}
+											}
+										}
+										break;
+									}
+								}
+							}
+
+						}else if(n.id != undefined && n.notes != undefined){
+
+							for(text of this.texts){
+
+								if(n.id == text.id){
+
+									for(note of n.notes){
+										
+										var cpt = 0;
+										var lgth = note.longueur;
+
+										for (var i = 0; i < text.words.length; i++) {
+
+											if(text.words[i].str == note.mot){
+												
+												cpt++;
+
+												if(cpt == note.nocc){
+
+													while(lgth > 0){
+
+														text.words[i].role = note.role;
+														text.words[i].prevRole = note.role;
+
+														if(text.words[i].str.match(/([A-Za-zÀ-ÿ0-9]+)/)){
+															lgth--;
+														}
+														i++;
+													}
+													break;
+												}
+											}
+										}
+									}
+									break;
+								}
+							}
+						}else{
+							alert("Le format de ce JSON n'est pas celui des annotations");
+						}
+						this.inputNotes = "";
+						this.endSelect();
+					}
+				}
+			}
+		});
+	</script>
+</body>
+</html>
